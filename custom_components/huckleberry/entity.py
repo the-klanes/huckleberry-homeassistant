@@ -1,4 +1,5 @@
 """Base entity for Huckleberry."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -33,7 +34,11 @@ def _valid_configuration_url(value: str | None) -> str | None:
 class HuckleberryBaseEntity(CoordinatorEntity["HuckleberryDataUpdateCoordinator"]):
     """Base entity for Huckleberry."""
 
-    def __init__(self, coordinator: HuckleberryDataUpdateCoordinator, child: HuckleberryChildProfile) -> None:
+    def __init__(
+        self,
+        coordinator: HuckleberryDataUpdateCoordinator,
+        child: HuckleberryChildProfile,
+    ) -> None:
         """Initialize the entity."""
         super().__init__(coordinator)
         self._child = child
@@ -57,4 +62,7 @@ class HuckleberryBaseEntity(CoordinatorEntity["HuckleberryDataUpdateCoordinator"
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return self.coordinator.last_update_success and self.child_uid in self.coordinator.data
+        return (
+            self.coordinator.last_update_success
+            and self.child_uid in self.coordinator.data
+        )

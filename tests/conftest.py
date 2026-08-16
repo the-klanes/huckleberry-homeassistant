@@ -76,29 +76,16 @@ def _build_mock_api(
     mock.setup_health_listener = AsyncMock()
     mock.setup_diaper_listener = AsyncMock()
     mock.setup_child_listener = AsyncMock()
+    mock.setup_pump_listener = AsyncMock()
+    mock.setup_activity_listener = AsyncMock()
     mock.stop_all_listeners = AsyncMock()
-
-    mock.start_sleep = AsyncMock()
-    mock.pause_sleep = AsyncMock()
-    mock.resume_sleep = AsyncMock()
-    mock.cancel_sleep = AsyncMock()
-    mock.complete_sleep = AsyncMock()
-
-    mock.start_nursing = AsyncMock()
-    mock.pause_nursing = AsyncMock()
-    mock.resume_nursing = AsyncMock()
-    mock.switch_nursing_side = AsyncMock()
-    mock.cancel_nursing = AsyncMock()
-    mock.complete_nursing = AsyncMock()
-
-    mock.log_diaper = AsyncMock()
-    mock.log_growth = AsyncMock()
-    mock.log_bottle = AsyncMock()
 
     mock.list_sleep_intervals = AsyncMock(return_value=[])
     mock.list_feed_intervals = AsyncMock(return_value=[])
     mock.list_diaper_intervals = AsyncMock(return_value=[])
     mock.list_health_entries = AsyncMock(return_value=[])
+    mock.list_pump_intervals = AsyncMock(return_value=[])
+    mock.list_activity_intervals = AsyncMock(return_value=[])
 
     mock.user_uid = "test_user_uid"
 
