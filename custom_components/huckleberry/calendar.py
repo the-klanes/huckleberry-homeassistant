@@ -1,7 +1,8 @@
 """Calendar platform for Huckleberry integration."""
+
 from __future__ import annotations
 
-import logging
+import asyncio
 from datetime import datetime, timedelta
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
@@ -10,22 +11,23 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from huckleberry_api import HuckleberryAPI
 from huckleberry_api.firebase_types import (
+    FirebaseActivityIntervalData,
     FirebaseBottleFeedIntervalData,
     FirebaseBreastFeedIntervalData,
     FirebaseDiaperData,
     FirebaseGrowthData,
+    FirebasePumpIntervalData,
     FirebaseSleepIntervalData,
     FirebaseSolidsFeedIntervalData,
+    HealthDataEntry,
 )
 
 from . import HuckleberryDataUpdateCoordinator, HuckleberryEntryData
+from .api import HuckleberryReadOnlyAPI
 from .const import DOMAIN
 from .entity import HuckleberryBaseEntity
 from .models import HuckleberryChildProfile
-
-_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -56,7 +58,7 @@ class HuckleberryCalendar(HuckleberryBaseEntity, CalendarEntity):
         self,
         coordinator: HuckleberryDataUpdateCoordinator,
         child: HuckleberryChildProfile,
-        api: HuckleberryAPI,
+        api: HuckleberryReadOnlyAPI,
     ) -> None:
         """Initialize the calendar."""
         super().__init__(coordinator, child)
@@ -78,52 +80,33 @@ class HuckleberryCalendar(HuckleberryBaseEntity, CalendarEntity):
         end_date: datetime,
     ) -> list[CalendarEvent]:
         """Get events between start and end date."""
-        _LOGGER.debug(
-            "Fetching calendar events for %s from %s to %s",
-            self.child_name,
-            start_date,
-            end_date,
+        (
+            sleep_intervals,
+            feed_intervals,
+            diaper_intervals,
+            health_entries,
+            pump_intervals,
+            activity_intervals,
+        ) = await asyncio.gather(
+            self._api.list_sleep_intervals(self.child_uid, start_date, end_date),
+            self._api.list_feed_intervals(self.child_uid, start_date, end_date),
+            self._api.list_diaper_intervals(self.child_uid, start_date, end_date),
+            self._api.list_health_entries(self.child_uid, start_date, end_date),
+            self._api.list_pump_intervals(self.child_uid, start_date, end_date),
+            self._api.list_activity_intervals(self.child_uid, start_date, end_date),
         )
 
-        events: list[CalendarEvent] = []
-
-        try:
-            sleep_intervals = await self._api.list_sleep_intervals(
-                self.child_uid, start_date, end_date
-            )
-            events.extend(self._build_sleep_events(sleep_intervals))
-        except Exception as err:
-            _LOGGER.error("Error fetching sleep events: %s", err)
-
-        try:
-            feed_intervals = await self._api.list_feed_intervals(
-                self.child_uid, start_date, end_date
-            )
-            feed_events, bottle_events = self._build_feed_events(feed_intervals)
-            events.extend(feed_events)
-            events.extend(bottle_events)
-        except Exception as err:
-            _LOGGER.error("Error fetching feed events: %s", err)
-
-        try:
-            diaper_intervals = await self._api.list_diaper_intervals(
-                self.child_uid, start_date, end_date
-            )
-            events.extend(self._build_diaper_events(diaper_intervals))
-        except Exception as err:
-            _LOGGER.error("Error fetching diaper events: %s", err)
-
-        try:
-            health_entries = await self._api.list_health_entries(
-                self.child_uid, start_date, end_date
-            )
-            events.extend(self._build_health_events(health_entries))
-        except Exception as err:
-            _LOGGER.error("Error fetching health events: %s", err)
+        events = self._build_sleep_events(sleep_intervals)
+        feed_events, bottle_events = self._build_feed_events(feed_intervals)
+        events.extend(feed_events)
+        events.extend(bottle_events)
+        events.extend(self._build_diaper_events(diaper_intervals))
+        events.extend(self._build_health_events(health_entries))
+        events.extend(self._build_pump_events(pump_intervals))
+        events.extend(self._build_activity_events(activity_intervals))
 
         events.sort(key=lambda e: e.start)
         self._events = events
-        _LOGGER.debug("Found %d events for %s", len(events), self.child_name)
         return events
 
     @staticmethod
@@ -218,11 +201,15 @@ class HuckleberryCalendar(HuckleberryBaseEntity, CalendarEntity):
                     else _format_duration(total_duration_seconds)
                 )
                 summary = f"🍼 Feed ({sides_str})"
-                description = f"Feeding - Total: {_format_duration(total_duration_seconds)}"
+                description = (
+                    f"Feeding - Total: {_format_duration(total_duration_seconds)}"
+                )
                 if left_duration_seconds > 0:
                     description += f"\nLeft: {_format_duration(left_duration_seconds)}"
                 if right_duration_seconds > 0:
-                    description += f"\nRight: {_format_duration(right_duration_seconds)}"
+                    description += (
+                        f"\nRight: {_format_duration(right_duration_seconds)}"
+                    )
 
                 feed_events.append(
                     CalendarEvent(
@@ -288,7 +275,7 @@ class HuckleberryCalendar(HuckleberryBaseEntity, CalendarEntity):
         return events
 
     @staticmethod
-    def _build_health_events(entries: list) -> list[CalendarEvent]:
+    def _build_health_events(entries: list[HealthDataEntry]) -> list[CalendarEvent]:
         """Build calendar events from health entries."""
         events: list[CalendarEvent] = []
         for entry in entries:
@@ -322,6 +309,56 @@ class HuckleberryCalendar(HuckleberryBaseEntity, CalendarEntity):
             )
         return events
 
+    @staticmethod
+    def _build_pump_events(
+        intervals: list[FirebasePumpIntervalData],
+    ) -> list[CalendarEvent]:
+        """Build pumping events from read-only history."""
+        events: list[CalendarEvent] = []
+        for interval in intervals:
+            start_time = datetime.fromtimestamp(
+                interval.start, tz=dt_util.DEFAULT_TIME_ZONE
+            )
+            duration = int(interval.duration or 0)
+            end_time = start_time + timedelta(seconds=duration)
+            total = float(interval.leftAmount or 0) + float(interval.rightAmount or 0)
+            description = f"Pumping: {_format_duration(duration)}"
+            if total:
+                description += f"\nTotal: {total:g} {interval.units}"
+            events.append(
+                CalendarEvent(
+                    start=start_time,
+                    end=end_time,
+                    summary=f"🫗 Pump ({total:g} {interval.units})"
+                    if total
+                    else "🫗 Pump",
+                    description=description,
+                )
+            )
+        return events
+
+    @staticmethod
+    def _build_activity_events(
+        intervals: list[FirebaseActivityIntervalData],
+    ) -> list[CalendarEvent]:
+        """Build activity events from read-only history."""
+        events: list[CalendarEvent] = []
+        for interval in intervals:
+            start_time = datetime.fromtimestamp(
+                interval.start, tz=dt_util.DEFAULT_TIME_ZONE
+            )
+            duration = int(interval.duration or 0)
+            label = _activity_label(interval.mode)
+            events.append(
+                CalendarEvent(
+                    start=start_time,
+                    end=start_time + timedelta(seconds=duration),
+                    summary=f"🧸 {label}",
+                    description=f"{label}: {_format_duration(duration)}",
+                )
+            )
+        return events
+
 
 def _format_duration(duration_seconds: float | int) -> str:
     """Format duration in seconds as readable min/sec text."""
@@ -333,3 +370,17 @@ def _format_duration(duration_seconds: float | int) -> str:
     if minutes > 0:
         return f"{minutes} min"
     return f"{seconds} sec"
+
+
+def _activity_label(mode: str) -> str:
+    """Return a human label for an API-validated activity mode."""
+    return {
+        "bath": "Bath",
+        "brushTeeth": "Brush teeth",
+        "indoorPlay": "Indoor play",
+        "outdoorPlay": "Outdoor play",
+        "screenTime": "Screen time",
+        "skinToSkin": "Skin to skin",
+        "storyTime": "Story time",
+        "tummyTime": "Tummy time",
+    }[mode]

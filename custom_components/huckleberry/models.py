@@ -1,15 +1,18 @@
 """Typed integration models for Huckleberry."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Sequence
 
 from huckleberry_api.firebase_types import (
+    FirebaseActivityDocumentData,
     FirebaseChildDocument,
     FirebaseDiaperDocumentData,
     FirebaseFeedDocumentData,
     FirebaseGrowthData,
     FirebaseHealthDocumentData,
+    FirebasePumpDocumentData,
     FirebaseSleepDocumentData,
     FirebaseUserChildRef,
 )
@@ -79,6 +82,8 @@ class HuckleberryChildState:
     health_status: FirebaseHealthDocumentData | None = None
     diaper_status: FirebaseDiaperDocumentData | None = None
     child_document: FirebaseChildDocument | None = None
+    pump_status: FirebasePumpDocumentData | None = None
+    activity_status: FirebaseActivityDocumentData | None = None
 
     @property
     def growth_data(self) -> FirebaseGrowthData | None:

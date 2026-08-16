@@ -1,4 +1,5 @@
 """Test calendar platform."""
+
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, AsyncMock
@@ -14,7 +15,9 @@ from custom_components.huckleberry.calendar import HuckleberryCalendar
 from custom_components.huckleberry.models import HuckleberryChildProfile
 
 
-def _make_profile(uid: str = "test_child_uid", name: str = "Test Baby") -> HuckleberryChildProfile:
+def _make_profile(
+    uid: str = "test_child_uid", name: str = "Test Baby"
+) -> HuckleberryChildProfile:
     return HuckleberryChildProfile(
         uid=uid,
         reference=FirebaseUserChildRef(cid=uid),
@@ -30,6 +33,8 @@ def mock_api():
     api.list_feed_intervals = AsyncMock(return_value=[])
     api.list_diaper_intervals = AsyncMock(return_value=[])
     api.list_health_entries = AsyncMock(return_value=[])
+    api.list_pump_intervals = AsyncMock(return_value=[])
+    api.list_activity_intervals = AsyncMock(return_value=[])
     return api
 
 
