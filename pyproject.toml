@@ -11,7 +11,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0.2",
-    "pytest-homeassistant-custom-component>=0.13.109",
+    "pytest-homeassistant-custom-component>=0.13.109,<0.13.368",
     "ruff>=0.15.0",
     "ty>=0.0.21",
     "tzdata>=2025.2",
